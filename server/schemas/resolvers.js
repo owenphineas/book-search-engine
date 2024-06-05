@@ -1,14 +1,22 @@
 const { User, Book } = require('../models');
-const { signToken } = require('../utils/auth');
+const { signToken, AuthenticationError } = require('../utils/auth');
 
 const resolvers = {
     Query: {
-        me: async () => {
-            return User.find({});
+        me: async (parent, args, context) => {
+            if (context.user) {
+                const userData = await User.findOne({ _id: context.user._id }).select(
+                    "-__v -password"
+                );
+
+                return userData;
+            }
+
+            throw new AuthenticationError("Not logged in");
         },
     },
     Mutation: {
-        login: async (parent, { email, password }) => {
+        loginUser: async (parent, { email, password }) => {
             const user = await User.findOne({ email });
 
             if(!user) {
@@ -34,18 +42,20 @@ const resolvers = {
             const token = signToken(user);
             return { token, user };
         },
-        saveBook: async (parent, { user, body }) => {
-            const updatedUser = await User.findOneAndUpdate(
-                {_id: user._id},
-                { $addToSet: { savedBooks: body } },
-                { new: true, runValidators: true }
-            );
-            return updatedUser;
+        saveBook: async (parent, args , context ) => {
+            if(context.user) {
+                return User.findOneAndUpdate(
+                    { _id: context.user._id },
+                    { $addToSet: { savedBooks: args } },
+                    { new: true, runValidators: true }
+                );
+            }
+            throw AuthenticationError;
         },
-        removeBook: async (parent, { user, params }) => {
+        removeBook: async (parent, { bookId }, context) => {
             const updatedUser = await User.findOneAndUpdate(
-                {_id: user._id},
-                { $pull: { savedBooks: { bookId: params.bookId } } },
+                {_id: context.user._id},
+                { $pull: { savedBooks: { bookId } } },
                 { new: true }
             );
 
